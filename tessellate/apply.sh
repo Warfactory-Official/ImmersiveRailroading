@@ -4,6 +4,7 @@ set -euo pipefail
 UPSTREAM_REF=ba11894cae7d1caf204901b768489a53d3271dba
 HERE=$(cd "$(dirname "$0")" && pwd)
 SRC=${1:?usage: apply.sh <upstream checkout>}
+SRC=$(cd "$SRC" && pwd)
 cd "$SRC"
 [ "$(git rev-parse HEAD)" = "$(git rev-parse "$UPSTREAM_REF^{commit}")" ] || { echo "SRC not at $UPSTREAM_REF" >&2; exit 1; }
 [ -z "$(git status --porcelain)" ] || { echo "SRC dirty" >&2; exit 1; }
