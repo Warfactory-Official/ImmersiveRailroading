@@ -1,0 +1,38 @@
+modLoader="javafml"
+loaderVersion="[2,)"
+license="TODO"
+
+[[mods]]
+modId="immersiverailroading"
+version="${file.jarVersion}"
+displayName="Immersive Railroading"
+
+[[dependencies.immersiverailroading]]
+    modId="neoforge"
+    type='required'
+    versionRange="[21.1.1,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.immersiverailroading]]
+    modId="minecraft"
+    type='required'
+    versionRange="[1.21.1]"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.immersiverailroading]]
+    modId="trackapi"
+    type='required'
+    versionRange="[1.1,)"
+    ordering="BEFORE"
+    side="BOTH"
+
+
+[[dependencies.immersiverailroading]]
+    modId="universalmodcore"
+    type='required'
+    versionRange="[1.3, 1.4)"
+    ordering="BEFORE"
+    side="BOTH"
+

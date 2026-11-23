@@ -1,0 +1,106 @@
+diff --git a/src/main/java/cam72cam/immersiverailroading/entity/EntityCoupleableRollingStock.java b/src/main/java/cam72cam/immersiverailroading/entity/EntityCoupleableRollingStock.java
+index 7d39f38d..9e5c1a98 100644
+--- a/src/main/java/cam72cam/immersiverailroading/entity/EntityCoupleableRollingStock.java
++++ b/src/main/java/cam72cam/immersiverailroading/entity/EntityCoupleableRollingStock.java
+@@ -69,17 +69,17 @@ public abstract class EntityCoupleableRollingStock extends EntityMoveableRolling
+ 	
+ 	@TagSync
+ 	@TagField(value = "CoupledFront", mapper = StrictTagMapper.class)
+-	private UUID coupledFront = null;
++	private volatile UUID coupledFront = null;
+ 	@TagSync
+ 	@TagField("frontCouplerEngaged")
+-	private boolean frontCouplerEngaged = true;
++	private volatile boolean frontCouplerEngaged = true;
+ 
+ 	@TagSync
+ 	@TagField(value = "CoupledBack", mapper = StrictTagMapper.class)
+-	private UUID coupledBack = null;
++	private volatile UUID coupledBack = null;
+ 	@TagSync
+ 	@TagField("backCouplerEngaged")
+-	private boolean backCouplerEngaged = true;
++	private volatile boolean backCouplerEngaged = true;
+ 
+ 
+ 	@TagField(value = "consist", mapper = Consist.TagMapper.class)
+@@ -99,11 +99,11 @@ public abstract class EntityCoupleableRollingStock extends EntityMoveableRolling
+ 
+ 	@TagSync
+ 	@TagField("hasElectricalPower")
+-	private boolean hasElectricalPower;
++	private volatile boolean hasElectricalPower;
+ 
+ 	@TagSync
+ 	@TagField("linkedToLocomotive")
+-	private boolean linkedToLocomotive;
++	private volatile boolean linkedToLocomotive;
+ 	private boolean hadElectricalPower = false;
+ 	private int gotElectricalPowerTick = -1;
+ 
+diff --git a/src/main/java/cam72cam/immersiverailroading/entity/EntityRollingStock.java b/src/main/java/cam72cam/immersiverailroading/entity/EntityRollingStock.java
+index 92131caf..4a84eb28 100644
+--- a/src/main/java/cam72cam/immersiverailroading/entity/EntityRollingStock.java
++++ b/src/main/java/cam72cam/immersiverailroading/entity/EntityRollingStock.java
+@@ -26,8 +26,8 @@ import cam72cam.mod.util.SingleCache;
+ import org.apache.commons.lang3.tuple.Pair;
+ import util.Matrix4;
+ 
+-import java.util.HashMap;
+ import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
+ import java.util.function.Function;
+ import java.util.function.Supplier;
+ 
+@@ -277,7 +277,7 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
+ 
+ 	@TagSync
+ 	@TagField(value="controlPositions", mapper = ControlPositionMapper.class)
+-	protected Map<String, Pair<Boolean, Float>> controlPositions = new HashMap<>();
++	protected Map<String, Pair<Boolean, Float>> controlPositions = new ConcurrentHashMap<>();
+ 
+ 	public void onDragStart(Control<?> control) {
+ 		setControlPressed(control, true);
+@@ -354,7 +354,7 @@ public class EntityRollingStock extends CustomEntity implements ITickable, IClic
+ 				TagField tag) throws SerializationException {
+ 			return new TagAccessor<>(
+ 					(d, o) -> d.setMap(fieldName, o, Function.identity(), x -> new TagCompound().setBoolean("pressed", x.getLeft()).setFloat("pos", x.getRight())),
+-					d -> d.getMap(fieldName, Function.identity(), x -> Pair.of(x.hasKey("pressed") && x.getBoolean("pressed"), x.getFloat("pos")))
++					d -> new ConcurrentHashMap<>(d.getMap(fieldName, Function.identity(), x -> Pair.of(x.hasKey("pressed") && x.getBoolean("pressed"), x.getFloat("pos"))))
+ 			);
+ 		}
+ 	}
+diff --git a/src/main/java/cam72cam/immersiverailroading/tile/TileRailBase.java b/src/main/java/cam72cam/immersiverailroading/tile/TileRailBase.java
+index 06b6e227..dd3ee6f9 100644
+--- a/src/main/java/cam72cam/immersiverailroading/tile/TileRailBase.java
++++ b/src/main/java/cam72cam/immersiverailroading/tile/TileRailBase.java
+@@ -91,7 +91,7 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
+ 	@Deprecated
+ 	@TagField("stockTag")
+ 	private String stockTag;
+-	private EntityMoveableRollingStock overhead;
++	private volatile EntityMoveableRollingStock overhead;
+ 	@TagField("pushPull")
+ 	private boolean pushPull = true;
+ 	@TagField("powered")
+@@ -560,6 +560,7 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
+ 	 */
+ 
+ 	public <T extends EntityRollingStock> T getStockNearBy(Class<T> type){
++		EntityMoveableRollingStock overhead = this.overhead;
+ 		if (overhead == null) {
+ 			return null;
+ 		}
+@@ -671,10 +672,11 @@ public class TileRailBase extends BlockEntityTrackTickable implements IRedstoneP
+ 			return;
+ 		}
+ 
++		EntityMoveableRollingStock overhead = this.overhead;
+ 		if (overhead != null && ticksExisted % 5 == 0) {
+ 			SimulationState state = overhead.getCurrentState();
+ 			if (state == null || !state.trackToUpdate.contains(getPos())) {
+-				overhead = null;
++				this.overhead = null;
+ 			}
+ 		}
+ 

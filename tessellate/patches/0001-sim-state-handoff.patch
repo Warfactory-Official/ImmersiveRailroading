@@ -1,0 +1,83 @@
+diff --git a/src/main/java/cam72cam/immersiverailroading/entity/EntityMoveableRollingStock.java b/src/main/java/cam72cam/immersiverailroading/entity/EntityMoveableRollingStock.java
+index fede894b..bd53b941 100644
+--- a/src/main/java/cam72cam/immersiverailroading/entity/EntityMoveableRollingStock.java
++++ b/src/main/java/cam72cam/immersiverailroading/entity/EntityMoveableRollingStock.java
+@@ -38,8 +38,9 @@ public abstract class EntityMoveableRollingStock extends EntityRidableRollingSto
+     public double distanceTraveled = 0;
+     private Speed currentSpeed;
+     @TagField(value = "positions", mapper = TickPos.ListTagMapper.class)
+-    public List<TickPos> positions = new ArrayList<>();
+-    public List<SimulationState> states = new ArrayList<>();
++    // Replaced wholesale by the simulation (never mutated after publish); read by region threads
++    public volatile List<TickPos> positions = new ArrayList<>();
++    public volatile List<SimulationState> states = new ArrayList<>();
+     private RealBB boundingBox;
+     private float[][] heightMapCache;
+     @TagSync
+@@ -174,6 +175,7 @@ public abstract class EntityMoveableRollingStock extends EntityRidableRollingSto
+         TickPos current = null;
+         TickPos next = null;
+ 
++        List<TickPos> positions = this.positions;
+         for (TickPos position : positions) {
+             if (position.tickID == currentTickID) {
+                 current = position;
+diff --git a/src/main/java/cam72cam/immersiverailroading/entity/physics/Simulation.java b/src/main/java/cam72cam/immersiverailroading/entity/physics/Simulation.java
+index 085c61a8..af7183e7 100644
+--- a/src/main/java/cam72cam/immersiverailroading/entity/physics/Simulation.java
++++ b/src/main/java/cam72cam/immersiverailroading/entity/physics/Simulation.java
+@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
+ 
+ public class Simulation {
+ 
+-    public static boolean forceQuickUpdates = false;
++    public static volatile boolean forceQuickUpdates = false;
+     public static int calculatedStates;
+     public static int restStates;
+     public static int keptStates;
+@@ -54,13 +54,16 @@ public class Simulation {
+ 
+         // Apply new states
+         for (EntityCoupleableRollingStock stock : loaded) {
+-            stock.states = stateMaps.stream().map(m -> m.get(stock.getUUID())).filter(Objects::nonNull).collect(Collectors.toList());
+-            for (SimulationState state : stock.states) {
++            List<SimulationState> newStates = stateMaps.stream().map(m -> m.get(stock.getUUID())).filter(Objects::nonNull).collect(Collectors.toList());
++            for (SimulationState state : newStates) {
+                 state.dirty = false;
+             }
+-            stock.positions = stock.states.stream().map(TickPos::new).collect(Collectors.toList());
++            List<TickPos> newPositions = newStates.stream().map(TickPos::new).collect(Collectors.toList());
++            // positions before states: a reader that sees a state also sees its position
++            stock.positions = newPositions;
++            stock.states = newStates;
+             if (sendPackets && players.stream().anyMatch(player -> player.getPosition().distanceToSquared(stock.getPosition()) < syncDistanceSq)) {
+-                new MRSSyncPacket(stock, stock.positions).sendToObserving(stock);
++                new MRSSyncPacket(stock, newPositions).sendToObserving(stock);
+             }
+         }
+ 
+diff --git a/src/main/java/cam72cam/immersiverailroading/entity/physics/chrono/ServerChronoState.java b/src/main/java/cam72cam/immersiverailroading/entity/physics/chrono/ServerChronoState.java
+index f33bf211..f9084b40 100644
+--- a/src/main/java/cam72cam/immersiverailroading/entity/physics/chrono/ServerChronoState.java
++++ b/src/main/java/cam72cam/immersiverailroading/entity/physics/chrono/ServerChronoState.java
+@@ -5,17 +5,17 @@ import cam72cam.mod.net.PacketDirection;
+ import cam72cam.mod.serialization.TagField;
+ import cam72cam.mod.world.World;
+ 
+-import java.util.HashMap;
+ import java.util.Map;
++import java.util.concurrent.ConcurrentHashMap;
+ 
+ public class ServerChronoState extends Packet implements ChronoState {
+-    private final static Map<World, ServerChronoState> states = new HashMap<>();
++    private final static Map<World, ServerChronoState> states = new ConcurrentHashMap<>();
+ 
+     @TagField
+     protected World world;
+     // int -> two years of ticks, good enough
+     @TagField
+-    protected int tickID;
++    protected volatile int tickID;
+     @TagField
+     protected double ticksPerSecond;
+ 

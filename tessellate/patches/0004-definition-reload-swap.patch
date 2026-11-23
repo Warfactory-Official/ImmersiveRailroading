@@ -1,0 +1,75 @@
+diff --git a/src/main/java/cam72cam/immersiverailroading/registry/DefinitionManager.java b/src/main/java/cam72cam/immersiverailroading/registry/DefinitionManager.java
+index 2e21f834..5b830466 100644
+--- a/src/main/java/cam72cam/immersiverailroading/registry/DefinitionManager.java
++++ b/src/main/java/cam72cam/immersiverailroading/registry/DefinitionManager.java
+@@ -24,9 +24,10 @@ import java.util.stream.Collectors;
+ import java.util.stream.Stream;
+ 
+ public class DefinitionManager {
+-    private static Map<String, EntityRollingStockDefinition> definitions;
+-    private static BiMultiMap<String, EntityRollingStockDefinition> stockTags;
+-    private static Map<String, TrackDefinition> tracks;
++    // Built locally and swapped in; read by region threads while a reload runs
++    private static volatile Map<String, EntityRollingStockDefinition> definitions;
++    private static volatile BiMultiMap<String, EntityRollingStockDefinition> stockTags;
++    private static volatile Map<String, TrackDefinition> tracks;
+     private static final Map<String, StockLoader> stockLoaders;
+ 
+     static {
+@@ -214,7 +215,7 @@ public class DefinitionManager {
+ 
+         Progress.Bar bar = Progress.push("Loading Models", definitionIDMap.size());
+ 
+-        stockTags = new BiMultiMap<>();
++        BiMultiMap<String, EntityRollingStockDefinition> newStockTags = new BiMultiMap<>();
+         Map<String, EntityRollingStockDefinition> loaded = getStockLoadingStream(definitionIDMap.entrySet()).map(tuple -> {
+             String defID = tuple.getKey();
+             String defType = tuple.getValue();
+@@ -245,7 +246,7 @@ public class DefinitionManager {
+                     System.out.println("GC");
+                     System.gc();
+                 }
+-                stockDefinition.tags.forEach(tag -> stockTags.put(tag, stockDefinition));
++                stockDefinition.tags.forEach(tag -> newStockTags.put(tag, stockDefinition));
+ 
+                 return Pair.of(stockDefinition.defID, stockDefinition);
+             } catch (Exception e) {
+@@ -260,8 +261,10 @@ public class DefinitionManager {
+             }
+         }).filter(Objects::nonNull).collect(Collectors.toMap(Pair::getKey, Pair::getValue));
+ 
+-        definitions = new LinkedHashMap<>();
+-        definitionIDMap.keySet().stream().filter(loaded::containsKey).forEach(x -> definitions.put(x, loaded.get(x)));
++        Map<String, EntityRollingStockDefinition> newDefinitions = new LinkedHashMap<>();
++        definitionIDMap.keySet().stream().filter(loaded::containsKey).forEach(x -> newDefinitions.put(x, loaded.get(x)));
++        stockTags = newStockTags;
++        definitions = newDefinitions;
+ 
+         Progress.pop(bar);
+     }
+@@ -296,7 +299,7 @@ public class DefinitionManager {
+     }
+ 
+     private static void initTracks() throws IOException {
+-        tracks = new LinkedHashMap<>();
++        Map<String, TrackDefinition> newTracks = new LinkedHashMap<>();
+ 
+         ImmersiveRailroading.info("Loading tracks.");
+ 
+@@ -342,7 +345,7 @@ public class DefinitionManager {
+                     block.getValueMap().put("pack", track.getValue("pack"));
+                 }
+                 try {
+-                    tracks.put(trackID, new TrackDefinition(trackID, block));
++                    newTracks.put(trackID, new TrackDefinition(trackID, block));
+                 } catch (Exception e) {
+                     ImmersiveRailroading.catching(e);
+                 }
+@@ -350,6 +353,7 @@ public class DefinitionManager {
+ 
+             Progress.pop(bar);
+         }
++        tracks = newTracks;
+     }
+ 
+     /**
