@@ -53,7 +53,7 @@ jobs:
         working-directory: src
         run: |
           git config user.name ci && git config user.email ci@invalid
-          sh ./gradlew remapJar -Dtarget=release -x test --no-daemon
+          bash ./gradlew remapJar -Dtarget=release -x test --no-daemon
 
       - name: Finalize jar
         run: |
